@@ -151,3 +151,35 @@ class LLM:
                 token_ids = prompt_token_ids[i]
             self._add_request(prompt, sampling_params, token_ids)
         return self._run_engine(use_tqdm)
+
+    def _add_request(
+        self,
+        prompt: Optional[str],
+        sampling_params: SamplingParams,
+        prompt_token_ids: Optional[List[int]],
+    ) -> None:
+        request_id = str(next(self.request_counter))
+        self.llm_engine.add_request(request_id, prompt, sampling_params,
+                                    prompt_token_ids)
+
+    def _run_engine(self, use_tqdm: bool) -> List[RequestOutput]:
+        # Initialize tqdm.
+        if use_tqdm:
+            num_requests = self.llm_engine.get_num_unfinished_requests()
+            pbar = tqdm(total=num_requests, desc="Processed prompts")
+        # Run the engine.
+        outputs: List[RequestOutput] = []
+        while self.llm_engine.has_unfinished_requests():
+            step_outputs = self.llm_engine.step()
+            for output in step_outputs:
+                if output.finished:
+                    outputs.append(output)
+                    if use_tqdm:
+                        pbar.update(1)
+        if use_tqdm:
+            pbar.close()
+        # Sort the outputs by request ID.
+        # This is necessary because some requests may be finished earlier than
+        # its previous requests.
+        outputs = sorted(outputs, key=lambda x: int(x.request_id))
+        return outputs
